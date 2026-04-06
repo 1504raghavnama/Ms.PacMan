@@ -1,7 +1,5 @@
 import gymnasium as gym
 import ale_py
-
-import agent
 gym.register_envs(ale_py)
 import numpy as np
 import torch
@@ -20,7 +18,8 @@ def preprocess(obs):
     obs = obs / 255.0
     return np.expand_dims(obs, axis=0)
 
-def shape_reward(reward, info, prev_info, life_penalty, prev_pos, curr_pos):
+def shape_reward(reward, info, prev_info, life_penalty,
+                 prev_obs, curr_obs, stuck_counter):
     shaped = reward
 
     # Punish dying
@@ -30,13 +29,15 @@ def shape_reward(reward, info, prev_info, life_penalty, prev_pos, curr_pos):
         if curr_lives < prev_lives:
             shaped += life_penalty
 
-    # Punish not moving (stuck in corner)
-    if prev_pos is not None and prev_pos == curr_pos:
-        shaped -= 5
-
-    # Reward moving (encourage exploration)
-    else:
-        shaped += 1
+    # Detect stuck by comparing frames
+    if prev_obs is not None:
+        diff = np.mean(np.abs(curr_obs - prev_obs))
+        if diff < 0.001:  # frames almost identical = stuck
+            stuck_counter[0] += 1
+            if stuck_counter[0] > 10:  # stuck for 10+ frames
+                shaped -= 10           # punish hard
+        else:
+            stuck_counter[0] = 0       # reset if moving
 
     return shaped
 
@@ -60,30 +61,27 @@ def train(episodes, no_shaping, life_penalty, name):
         obs = preprocess(obs)
         total_reward = 0
         prev_info = None
+        prev_obs = None
+        stuck_counter = [0]
         done = False
-        prev_pos = None
-        
+
         while not done:
             action = agent.select_action(obs)
             next_obs, reward, terminated, truncated, info = env.step(action)
             done = terminated or truncated
-
-            # Preprocess FIRST before anything else
             next_obs = preprocess(next_obs)
-
-            # Get current position
-            curr_pos = (info.get('x_pos', 0), info.get('y_pos', 0))
 
             if not no_shaping:
                 reward = shape_reward(reward, info, prev_info,
-                                    life_penalty, prev_pos, curr_pos)
+                                      life_penalty, prev_obs,
+                                      next_obs, stuck_counter)
 
             agent.memory.push(obs, action, reward, next_obs, done)
             agent.train()
 
+            prev_obs = obs
             obs = next_obs
             prev_info = info
-            prev_pos = curr_pos
             total_reward += reward
 
         scores.append(total_reward)

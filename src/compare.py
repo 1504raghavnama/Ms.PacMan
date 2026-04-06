@@ -9,6 +9,7 @@ def compare():
     experiments = {
         "Baseline DDQN":     "../results/exp1_baseline_scores.npy",
         "Life Penalty":      "../results/exp4_both_scores.npy",
+        "No Stuck Fix":      "../results/exp5_no_stuck_scores.npy",
     }
 
     plt.figure(figsize=(12, 6))
