@@ -52,7 +52,7 @@ class ReplayBuffer:
 
 class DDQNAgent:
     def __init__(self, input_shape, n_actions, lr=1e-4, gamma=0.99,
-                 epsilon=1.0, epsilon_min=0.1, epsilon_decay=0.995):
+                 epsilon=1.0, epsilon_min=0.15, epsilon_decay=0.995):
         self.n_actions = n_actions
         self.gamma = gamma
         self.epsilon = epsilon

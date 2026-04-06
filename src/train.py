@@ -1,5 +1,7 @@
 import gymnasium as gym
 import ale_py
+
+import agent
 gym.register_envs(ale_py)
 import numpy as np
 import torch
@@ -18,13 +20,24 @@ def preprocess(obs):
     obs = obs / 255.0
     return np.expand_dims(obs, axis=0)
 
-def shape_reward(reward, info, prev_info, life_penalty):
+def shape_reward(reward, info, prev_info, life_penalty, prev_pos, curr_pos):
     shaped = reward
+
+    # Punish dying
     if life_penalty != 0:
         prev_lives = prev_info.get('lives', 3) if prev_info else 3
         curr_lives = info.get('lives', 3)
         if curr_lives < prev_lives:
             shaped += life_penalty
+
+    # Punish not moving (stuck in corner)
+    if prev_pos is not None and prev_pos == curr_pos:
+        shaped -= 5
+
+    # Reward moving (encourage exploration)
+    else:
+        shaped += 1
+
     return shaped
 
 def train(episodes, no_shaping, life_penalty, name):
@@ -48,21 +61,29 @@ def train(episodes, no_shaping, life_penalty, name):
         total_reward = 0
         prev_info = None
         done = False
-
+        prev_pos = None
+        
         while not done:
             action = agent.select_action(obs)
             next_obs, reward, terminated, truncated, info = env.step(action)
             done = terminated or truncated
+
+            # Preprocess FIRST before anything else
             next_obs = preprocess(next_obs)
 
+            # Get current position
+            curr_pos = (info.get('x_pos', 0), info.get('y_pos', 0))
+
             if not no_shaping:
-                reward = shape_reward(reward, info, prev_info, life_penalty)
+                reward = shape_reward(reward, info, prev_info,
+                                    life_penalty, prev_pos, curr_pos)
 
             agent.memory.push(obs, action, reward, next_obs, done)
             agent.train()
 
             obs = next_obs
             prev_info = info
+            prev_pos = curr_pos
             total_reward += reward
 
         scores.append(total_reward)
